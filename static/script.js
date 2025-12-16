@@ -21,6 +21,26 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    const exitBtn = document.getElementById('exit-btn');
+    if (exitBtn) {
+        exitBtn.addEventListener('click', async () => {
+            if (confirm("Are you sure you want to exit? This will shut down the application.")) {
+                try {
+                    await fetch('/api/shutdown', { method: 'POST' });
+                } catch (e) { /* Ignore */ }
+                window.close(); // Try to close tab
+                document.body.innerHTML = "<div style='color:white; text-align:center; padding-top:50px;'>Application Shutting Down...<br>You can close this tab.</div>";
+            }
+        });
+    }
+
+    // Optional: Warn on browser close, but we can't force shutdown robustly without heartbeat
+    // window.addEventListener('beforeunload', (e) => {
+    //     e.preventDefault();
+    //     e.returnValue = ''; // Standard standard 'Are you sure' dialog
+    // });
+
+
     // --- Chat Management ---
     if (clearChatBtn) clearChatBtn.addEventListener('click', () => {
         if (confirm("Clear chat history?")) {
@@ -57,6 +77,10 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 storeSelect.innerHTML = '<option value="" disabled selected>No stores found</option>';
             }
+            // After fetching stores, if we have an active one, fetch its files
+            if (currentStoreId) {
+                fetchStoreFiles(currentStoreId);
+            }
         } catch (e) {
             console.error(e);
         }
@@ -74,13 +98,11 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const data = await res.json();
             if (data.status === 'success') {
-                // Optimistic Update: Add to list immediately
                 const opt = document.createElement('option');
                 opt.value = data.id;
                 opt.textContent = data.name;
                 opt.selected = true;
 
-                // Remove placeholder if present
                 const placeholder = storeSelect.querySelector('option[disabled]');
                 if (placeholder) placeholder.remove();
 
@@ -88,8 +110,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentStoreId = data.id;
 
                 alert(`Store '${name}' created!`);
-
-                // Refresh list properly after a short delay to ensure API consistency
                 setTimeout(fetchStores, 1000);
             } else {
                 alert("Error: " + data.error);
@@ -104,9 +124,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!confirm("Are you sure? This will delete all indexed files in this store.")) return;
 
         try {
-            // Because IDs might have slashes (resource names), we might need to handle URLs carefully.
-            // But usually fetch handles it if we don't double encode incorrectly.
-            // However, Flask path param captures slashes.
             const res = await fetch(`/api/stores/${currentStoreId}`, {
                 method: 'DELETE'
             });
@@ -114,6 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.status === 'success') {
                 await fetchStores();
                 currentStoreId = null;
+                fileList.innerHTML = ''; // Clear file list
                 alert("Store deleted.");
             } else {
                 alert("Error: " + data.error);
@@ -136,11 +154,63 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
             if (data.status === 'success') {
                 currentStoreId = selectedId;
+                fetchStoreFiles(selectedId);
             }
         } catch (e) {
             console.error(e);
         }
     });
+
+    // --- File List Management (Feature 1) ---
+    let fileMap = {}; // Map URI -> Display Name for citations
+
+    async function fetchStoreFiles(storeId) {
+        if (!storeId) return;
+        fileList.innerHTML = '<div style="text-align:center; color:grey; padding:10px;">Loading files...</div>';
+        try {
+            const res = await fetch(`/api/store/${storeId}/files`);
+            const data = await res.json();
+
+            fileList.innerHTML = ''; // Clear loading
+            fileMap = {}; // Reset map
+
+            if (data.files && data.files.length > 0) {
+                // Sort by name
+                data.files.sort((a, b) => a.name.localeCompare(b.name));
+
+                data.files.forEach(f => {
+                    // Update map
+                    fileMap[f.uri] = f.name;
+
+                    const item = document.createElement('div');
+                    item.className = 'file-item';
+                    item.innerHTML = `
+                        <div style="width:100%; display:flex; justify-content:space-between; align-items:center;">
+                            <span class="file-name" title="${f.name}">${f.name}</span>
+                            <span class="check">✓</span>
+                        </div>
+                    `;
+                    fileList.appendChild(item);
+                });
+            } else {
+                fileList.innerHTML = '<div style="text-align:center; color:grey; padding:10px;">No files indexed.</div>';
+            }
+        } catch (e) {
+            console.error(e);
+            fileList.innerHTML = `<div style="color:red; font-size:12px; padding:5px;">Error loading files</div>`;
+        }
+    }
+
+    // --- Heartbeat ---
+    // User wants auto-shutdown when browser closes.
+    // We send a heartbeat every 2 seconds. Server waits 5 seconds.
+    setInterval(async () => {
+        try {
+            await fetch('/api/heartbeat', { method: 'POST' });
+        } catch (e) {
+            // Server dead?
+        }
+    }, 2000);
 
     // Initial load
     fetchStores();
@@ -166,10 +236,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     saveKeyBtn.textContent = originalText;
                     saveKeyBtn.style.background = '';
                     saveKeyBtn.style.color = '';
-                    apiKeyInput.value = ''; // Clear for security presentation
+                    apiKeyInput.value = '';
                 }, 2000);
 
-                // Refresh models and stores
                 fetchModels();
                 fetchStores();
             }
@@ -183,6 +252,7 @@ document.addEventListener('DOMContentLoaded', () => {
         { id: 'gemini-3-pro-preview', name: 'Gemini 3.0 Pro Preview' },
         { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
         { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+        { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite' },
         { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash Exp' },
         { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
         { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' }
@@ -190,8 +260,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchModels() {
         if (!modelSelect) return;
-
-        // Optimistic UI: If empty or loading, show defaults first
         if (modelSelect.options.length <= 1) {
             renderModels(DEFAULT_MODELS);
         }
@@ -204,49 +272,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderModels(data.models);
             }
         } catch (e) {
-            console.log("Could not fetch models (maybe no key yet)");
-            // If failed and we still have defaults, keep them. 
-            // Only show error if we really have nothing.
-            if (modelSelect.options.length === 0) {
-                modelSelect.innerHTML = '<option value="" disabled selected>Please set API Key</option>';
-            }
+            console.log("Could not fetch models");
         }
     }
 
     function renderModels(models) {
         const currentVal = modelSelect.value;
         modelSelect.innerHTML = '';
-
-        // Priority Sort logic...
-        models.sort((a, b) => {
-            const score = (name) => {
-                if (name.includes('flash')) return 3;
-                if (name.includes('pro')) return 2;
-                return 1;
-            }
-            return score(b.id) - score(a.id);
-        });
-
         models.forEach(m => {
             const opt = document.createElement('option');
             opt.value = m.id;
-            // Handle if name already has ID or is undefined
             const name = m.name || m.id;
-            // Don't duplicate ID in display if it's the same
             opt.textContent = name === m.id ? name : `${name} (${m.id})`;
             modelSelect.appendChild(opt);
         });
 
-        // Restore selection
         if (currentVal && Array.from(modelSelect.options).some(o => o.value === currentVal)) {
             modelSelect.value = currentVal;
         } else if (models.length > 0) {
-            // Default to first (best sorted)
             modelSelect.value = models[0].id;
         }
     }
 
-    // Initial fetch (might fail if no key, but worth trying if key env is set)
     fetchModels();
 
     // --- File Upload Handling ---
@@ -254,13 +301,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const triggerFolder = document.getElementById('trigger-folder');
     const folderInput = document.getElementById('folder-input');
 
-    // Click triggers
     if (triggerFile) triggerFile.addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
     if (triggerFolder) triggerFolder.addEventListener('click', (e) => { e.stopPropagation(); folderInput.click(); });
 
-    // Main drop zone click default to file
     dropZone.addEventListener('click', (e) => {
-        // Only trigger if clicked on background, not on buttons
         if (e.target === dropZone || e.target.tagName === 'P' || e.target.className === 'icon') {
             fileInput.click();
         }
@@ -276,21 +320,11 @@ document.addEventListener('DOMContentLoaded', () => {
     dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
         dropZone.classList.remove('dragover');
-
         const items = e.dataTransfer.items;
         if (items) {
             for (let i = 0; i < items.length; i++) {
                 const item = items[i].webkitGetAsEntry();
-                if (item) {
-                    traverseFileTree(item);
-                }
-            }
-        } else {
-            // Fallback for older browsers
-            if (e.dataTransfer.files.length) {
-                for (let i = 0; i < e.dataTransfer.files.length; i++) {
-                    uploadFiles(e.dataTransfer.files[i]);
-                }
+                if (item) traverseFileTree(item);
             }
         }
     });
@@ -302,7 +336,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 uploadFiles(fileInput.files[i]);
             }
         }
-        // Reset to allow selecting same file again
         fileInput.value = '';
     });
 
@@ -310,52 +343,25 @@ document.addEventListener('DOMContentLoaded', () => {
         if (folderInput.files.length) {
             for (let i = 0; i < folderInput.files.length; i++) {
                 const file = folderInput.files[i];
-                // Check path for ignored folders
-                const path = file.webkitRelativePath || file.name;
-                // Simple check: does path contain ignored dir?
-                // .webkitRelativePath looks like "folder/sub/file.txt"
-                const parts = path.split('/');
-                let skip = false;
-                for (let part of parts) {
-                    if (IGNORED_DIRS.has(part)) { skip = true; break; }
-                }
-                if (skip) {
-                    console.log("Skipping " + path);
-                    continue;
-                }
                 if (isIgnored(file.name, false)) continue;
-
                 uploadFiles(file);
             }
         }
         folderInput.value = '';
     });
 
-    const IGNORED_DIRS = new Set([
-        'node_modules', '.git', '.vscode', '.idea', 'dist', 'build',
-        '__pycache__', 'venv', 'env', '.venv', '.env',
-        '$RECYCLE.BIN', 'System Volume Information'
-    ]);
-
-    const IGNORED_FILES = new Set([
-        '.DS_Store', 'Thumbs.db', 'desktop.ini'
-    ]);
+    const IGNORED_DIRS = new Set(['node_modules', '.git', '.vscode', '__pycache__', 'venv', '.venv']);
+    const IGNORED_FILES = new Set(['.DS_Store', 'Thumbs.db']);
 
     function isIgnored(name, isDir) {
         if (isDir && IGNORED_DIRS.has(name)) return true;
         if (!isDir && IGNORED_FILES.has(name)) return true;
-        // Ignore dotfiles generally if needed, but let's stick to specific list for now 
-        // or prevent all hidden files:
-        // if (name.startsWith('.')) return true; 
         return false;
     }
 
     function traverseFileTree(item, path) {
         path = path || "";
-        if (isIgnored(item.name, item.isDirectory)) {
-            console.log(`Skipping ignored item: ${path}${item.name}`);
-            return;
-        }
+        if (isIgnored(item.name, item.isDirectory)) return;
 
         if (item.isFile) {
             item.file(function (file) {
@@ -370,7 +376,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         for (let i = 0; i < entries.length; i++) {
                             traverseFileTree(entries[i], path + item.name + "/");
                         }
-                        // Continue reading (some browsers return in chunks)
                         readEntries();
                     }
                 });
@@ -380,7 +385,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function uploadFiles(file) {
-        // Create UI Item
         const item = document.createElement('div');
         item.className = 'file-item uploading';
         item.innerHTML = `
@@ -389,57 +393,44 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="file-name">${file.name}</span>
                     <div class="spinner"></div>
                 </div>
-                <div class="progress-bar-container">
-                    <div class="progress-bar"></div>
-                </div>
+                <div class="progress-bar-container"><div class="progress-bar"></div></div>
             </div>
         `;
+        // Prepend to list for visual feedback
         fileList.prepend(item);
 
         const progressBar = item.querySelector('.progress-bar');
         const spinner = item.querySelector('.spinner');
-
         const formData = new FormData();
         formData.append('file', file);
 
         return new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
             xhr.open('POST', '/api/upload', true);
-
             xhr.upload.onprogress = (e) => {
                 if (e.lengthComputable) {
-                    const percent = (e.loaded / e.total) * 100;
-                    progressBar.style.width = percent + '%';
+                    progressBar.style.width = ((e.loaded / e.total) * 100) + '%';
                 }
             };
-
             xhr.onload = () => {
                 item.classList.remove('uploading');
                 if (xhr.status === 200) {
-                    const data = JSON.parse(xhr.responseText);
-                    if (data.status === 'success') {
-                        if (spinner) spinner.replaceWith(createCheckmark());
-                        resolve(data);
-                        // Update file counts in dropdown
-                        fetchStores();
-                    } else {
-                        handleError(data.error);
-                    }
+                    if (spinner) spinner.replaceWith(createCheckmark());
+                    // Refresh the full list to get correct state/order
+                    fetchStoreFiles(currentStoreId);
+                    fetchStores(); // Update counts
+                    resolve();
                 } else {
-                    handleError("HTTP " + xhr.status);
+                    handleError("Error");
                 }
             };
-
             xhr.onerror = () => handleError("Network Error");
-
             function handleError(msg) {
                 item.classList.remove('uploading');
                 if (spinner) spinner.remove();
-                item.style.borderColor = '#fa4549';
-                item.innerHTML += `<div style="color:red; font-size:10px">${msg}</div>`;
-                reject(new Error(msg));
+                item.style.borderColor = 'red';
+                reject();
             }
-
             xhr.send(formData);
         });
     }
@@ -459,26 +450,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     userInput.addEventListener('input', autoResize);
-
     userInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             sendMessage();
         }
     });
-
     sendBtn.addEventListener('click', sendMessage);
 
     async function sendMessage() {
         const text = userInput.value.trim();
+        // Feature 2: Custom Instruction
+        const systemInstruction = document.getElementById('system-instruction').value.trim();
+
         if (!text) return;
 
         addMessage('user', text);
         userInput.value = '';
-        userInput.style.height = 'auto'; // Reset height
+        userInput.style.height = 'auto';
         sendBtn.disabled = true;
 
-        // Add loading bubble
         const loadingId = addMessage('ai', 'Thinking...', true);
 
         try {
@@ -486,28 +477,30 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text, model: model })
+                body: JSON.stringify({
+                    message: text,
+                    model: model,
+                    system_instruction: systemInstruction
+                })
             });
             const data = await res.json();
-
-            // Remove loading
             const loader = document.getElementById(loadingId);
             if (loader) loader.remove();
 
             if (data.error) {
-                addMessage('ai', "⚠️ Error: " + data.error + "\n\nMake sure you have uploaded a file and set your API key.");
+                addMessage('ai', "⚠️ Error: " + data.error);
             } else {
-                addMessage('ai', data.response);
+                // Feature 3: Citations
+                addMessage('ai', data.response, false, data.citations);
             }
-
         } catch (e) {
             const loader = document.getElementById(loadingId);
             if (loader) loader.remove();
-            addMessage('ai', "Network Error: " + e.message);
+            addMessage('ai', "Error: " + e.message);
         }
     }
 
-    function addMessage(role, text, isLoading = false) {
+    function addMessage(role, text, isLoading = false, citations = []) {
         const msgDiv = document.createElement('div');
         msgDiv.className = `message ${role}`;
         if (isLoading) msgDiv.id = 'msg-' + Date.now();
@@ -520,21 +513,27 @@ document.addEventListener('DOMContentLoaded', () => {
             bubble.style.opacity = 0.7;
             bubble.style.fontStyle = 'italic';
         } else {
-            // Simple markdown Text to HTML (very basic)
             let html = text
                 .replace(/&/g, "&amp;")
                 .replace(/</g, "&lt;")
                 .replace(/>/g, "&gt;")
                 .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
                 .replace(/\n/g, '<br>');
+
+            if (citations && citations.length > 0) {
+                html += `<div class="citation-block"><span class="citation-title">Sources:</span><br>`;
+                citations.forEach(c => {
+                    const name = fileMap[c.uri] || "Unknown File";
+                    const range = c.startIndex !== undefined ? `[${c.startIndex}-${c.endIndex}]` : "";
+                    html += `<span class="citation-item" title="${c.uri}">${name} ${range}</span>`;
+                });
+                html += `</div>`;
+            }
             bubble.innerHTML = html;
         }
-
         msgDiv.appendChild(bubble);
-
         chatHistory.appendChild(msgDiv);
         chatHistory.scrollTop = chatHistory.scrollHeight;
-
         return msgDiv.id;
     }
 });

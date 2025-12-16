@@ -9,9 +9,15 @@ from dotenv import load_dotenv
 
 import sys
 import webbrowser
+import threading
 from threading import Timer
 
 load_dotenv()
+
+def shutdown_server():
+    print("Shutting down server...")
+    os._exit(0)
+
 
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
@@ -209,11 +215,26 @@ def get_store_file_count(store_id):
         return jsonify({"count": "?", "error": str(e)})
 
 
-# Actually, let's just create a separate endpoint to list files for the active store 
-# and count them in frontend? No, list is for dropdown.
-# I will just add a 'files' field to the list_stores response that is empty for now,
-# and maybe user the frontend to fetch counts individually?
-# Implementing /api/stores/<id>/files would be better.
+@app.route('/api/store/<path:store_id>/files', methods=['GET'])
+def list_store_files(store_id):
+    try:
+        client = get_client()
+        files = []
+        # Iterate over files in the store
+        # Note: Pagination might be needed for very large stores, this fetches default page size
+        for f in client.file_search_stores.list_files(file_search_store_name=store_id):
+             files.append({
+                 "name": f.config.display_name if (f.config and f.config.display_name) else f.name,
+                 "id": f.name,
+                 "uri": f.uri,
+                 "size_bytes": f.size_bytes,
+                 # "create_time": f.create_time # might be useful
+             })
+        
+        return jsonify({"files": files})
+    except Exception as e:
+        print(f"Error listing files: {e}")
+        return jsonify({"files": [], "error": str(e)})
 
 
 
@@ -279,6 +300,12 @@ def delete_store(store_id):
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/shutdown', methods=['POST'])
+def shutdown():
+    # Schedule shutdown slightly in future to allow sending response
+    Timer(1.0, shutdown_server).start()
+    return jsonify({"status": "success", "message": "Server shutting down..."})
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
@@ -366,6 +393,8 @@ def chat():
     message = data.get('message')
     from_model = data.get('model', 'gemini-1.5-flash') # Default fallback
     
+    system_instruction = data.get('system_instruction')
+
     if not CURRENT_STORE_ID:
         return jsonify({"error": "Please select a Knowledge Base first."}), 400
 
@@ -378,21 +407,65 @@ def chat():
             )
         )
         
+        # Configure generation
+        config = types.GenerateContentConfig(
+            tools=[tool],
+            system_instruction=system_instruction if system_instruction else None
+        )
+
         response = client.models.generate_content(
             model=from_model,
             contents=message,
-            config=types.GenerateContentConfig(
-                tools=[tool]
-            )
+            config=config
         )
         
+        # Extract citations if available
+        citations = []
+        if response.candidates and response.candidates[0].citation_metadata:
+             for citation in response.candidates[0].citation_metadata.citation_sources:
+                 start = citation.start_index if citation.start_index is not None else 0
+                 end = citation.end_index if citation.end_index is not None else 0
+                 uri = citation.uri
+                 # Try to get display name from uri if possible, or just send uri
+                 # The UI can map URIs to names if we have the file list, 
+                 # but for now let's just send what we have.
+                 citations.append({
+                     "uri": uri,
+                     "startIndex": start,
+                     "endIndex": end
+                 })
+
         return jsonify({
             "response": response.text,
+            "citations": citations
         })
 
     except Exception as e:
         print(f"Error: {e}")
         return jsonify({"error": str(e)}), 500
+
+# --- Heartbeat / Auto Shutdown ---
+LAST_HEARTBEAT = time.time() + 10  # Initial grace period (10s)
+HEARTBEAT_TIMEOUT = 5 # Seconds
+
+def heartbeat_monitor():
+    """Checks if client is still connected. Shuts down if no heartbeat received."""
+    global LAST_HEARTBEAT
+    print("Heartbeat monitor started...")
+    while True:
+        time.sleep(2)
+        if time.time() - LAST_HEARTBEAT > HEARTBEAT_TIMEOUT:
+            print(f"No heartbeat for {HEARTBEAT_TIMEOUT}s. Shutting down...")
+            os._exit(0)
+
+# Start monitor in background
+threading.Thread(target=heartbeat_monitor, daemon=True).start()
+
+@app.route('/api/heartbeat', methods=['POST'])
+def heartbeat():
+    global LAST_HEARTBEAT
+    LAST_HEARTBEAT = time.time()
+    return jsonify({"status": "alive"})
 
 def open_browser():
     webbrowser.open_new('http://127.0.0.1:5000/')

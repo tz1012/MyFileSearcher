@@ -47,6 +47,14 @@
                 </div>
             </div>
 
+            <div class="config-section">
+                <label>System Instructions</label>
+                <div class="input-group">
+                    <textarea id="system-instruction" rows="2" placeholder="e.g. Act as a legal expert..."
+                        style="width: 100%; background: var(--bg-color); border: 1px solid var(--border); border-radius: 6px; padding: 8px; color: var(--text-primary); font-size: 13px; resize: vertical; min-height: 60px;"></textarea>
+                </div>
+            </div>
+
             <div class="store-section">
                 <label>Knowledge Base</label>
                 <div class="input-group" style="margin-bottom: 8px;">
@@ -73,7 +81,16 @@
                     <input type="file" id="file-input" hidden multiple>
                     <input type="file" id="folder-input" hidden webkitdirectory directory multiple>
                 </div>
-                <div id="file-list" class="file-list"></div>
+                <div id="file-list-container" style="flex: 1; overflow-y: auto; margin-top: 10px; min-height: 0;">
+                    <div id="file-list" class="file-list"></div>
+                </div>
+            </div>
+            <div class="sidebar-footer"
+                style="margin-top: auto; padding-top: 20px; border-top: 1px solid var(--border);">
+                <button id="exit-btn"
+                    style="width: 100%; background: #21262d; color: #fa4549; border: 1px solid var(--border); padding: 8px; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                    ✕ Exit Application
+                </button>
             </div>
         </aside>
 
