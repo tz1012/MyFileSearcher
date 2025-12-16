@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini File Search</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="logo">
+                <div class="logo-icon">✨</div>
+                <span>Gemini Search</span>
+            </div>
+
+            <!-- Cost Info Widget -->
+            <div id="cost-info-widget" class="cost-widget">
+                <div class="cost-header">
+                    <span>⚡ Pricing Info</span>
+                    <span id="close-cost-widget" class="close-btn">×</span>
+                </div>
+                <div class="cost-content">
+                    File Storage & Querying: <b>Free</b><br>
+                    Indexing: <b>$0.15</b> / 1M tokens (>3k pages)<br>
+                    <a href="https://ai.google.dev/gemini-api/docs/pricing" target="_blank">Detail</a>
+                </div>
+            </div>
+
+            <div class="config-section">
+                <label>API Key</label>
+                <div class="input-group">
+                    <input type="password" id="api-key" placeholder="Paste API Key here">
+                    <button id="save-key-btn">Set</button>
+                </div>
+            </div>
+
+            <div class="config-section">
+                <label>Model</label>
+                <div class="input-group">
+                    <select id="model-select">
+                        <option value="" disabled selected>Loading models...</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="store-section">
+                <label>Knowledge Base</label>
+                <div class="input-group" style="margin-bottom: 8px;">
+                    <select id="store-select">
+                        <option value="" disabled selected>Select Store...</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <button id="create-store-btn" style="flex:1">+ New</button>
+                    <button id="delete-store-btn" style="width: 40px; background: #fa4549; color: white;">🗑</button>
+                </div>
+            </div>
+
+            <div class="upload-section">
+                <h3>Files</h3>
+                <div class="drop-zone" id="drop-zone">
+                    <div class="icon">📄</div>
+                    <p>Drag content here</p>
+                    <div class="upload-actions">
+                        <span class="action" id="trigger-file">Upload Files</span>
+                        <span class="separator">|</span>
+                        <span class="action" id="trigger-folder">Upload Folder</span>
+                    </div>
+                    <input type="file" id="file-input" hidden multiple>
+                    <input type="file" id="folder-input" hidden webkitdirectory directory multiple>
+                </div>
+                <div id="file-list" class="file-list"></div>
+            </div>
+        </aside>
+
+        <main class="chat-monitor">
+            <div class="chat-header">
+                <h2>Chat Session</h2>
+                <div class="header-controls">
+                    <button id="clear-chat-btn" class="text-btn">Clear Chat</button>
+                    <span class="status-badge" id="connection-status">Ready</span>
+                </div>
+            </div>
+
+            <div class="chat-history" id="chat-history">
+                <div class="message ai">
+                    <div class="bubble">
+                        Hello! I am your Gemini File Search assistant. Upload a document on the left to get started,
+                        then ask me anything about it.
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-area">
+                <div class="input-wrapper">
+                    <textarea id="user-input" rows="1" placeholder="Type your message..."></textarea>
+                    <button id="send-btn" disabled>
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+
+</html>

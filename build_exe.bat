@@ -1,0 +1,1 @@
+python -m PyInstaller --noconfirm --clean --onefile --windowed --name "GeminiFileSearch" --add-data "templates;templates" --add-data "static;static" --add-data ".env.example;." --hidden-import="google" --hidden-import="google.genai" --noupx app.py
