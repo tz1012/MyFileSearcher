@@ -24,3 +24,8 @@ build/
 
 # Local Uploads
 uploads/
+
+# Security / Local Config
+store_config.json
+GeminiFileSearch_Setup/
+GeminiFileSearch_Setup.zip
