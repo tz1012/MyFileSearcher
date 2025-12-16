@@ -123,6 +123,10 @@ def get_client():
 def index():
     return render_template('index.html')
 
+@app.route('/api/has_key', methods=['GET'])
+def check_has_key():
+    return jsonify({"has_key": bool(os.environ.get("GEMINI_API_KEY"))})
+
 @app.route('/api/set_key', methods=['POST'])
 def set_key():
     data = request.json
@@ -443,6 +447,52 @@ def chat():
     except Exception as e:
         print(f"Error: {e}")
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/store/<path:store_id>/suggestions', methods=['POST'])
+def generate_suggestions(store_id):
+    try:
+        client = get_client()
+        
+        # Borrowed prompt logic from 'ask-the-manual'
+        prompt = """
+        You are provided some documents. 
+        Generate 4 short, practical, and interesting questions a user might ask about these documents.
+        Return the questions as a JSON array of strings, e.g. ["Question 1?", "Question 2?", ...].
+        Do not include markdown formatting or backticks, just the raw JSON.
+        """
+        
+        tool = types.Tool(
+            file_search=types.FileSearch(
+                file_search_store_names=[store_id]
+            )
+        )
+        
+        response = client.models.generate_content(
+            model='gemini-1.5-flash', # Use stable model for suggestions
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=[tool],
+                response_mime_type="application/json"
+            )
+        )
+        
+        text = response.text.strip()
+        # Cleanup if model adds markdown
+        if text.startswith("```json"): text = text[7:]
+        if text.endswith("```"): text = text[:-3]
+        
+        questions = json.loads(text)
+        
+        # Ensure it's a list of strings
+        if isinstance(questions, list):
+           return jsonify({"questions": questions[:4]}) # Limit to 4
+        else:
+           return jsonify({"questions": []})
+
+    except Exception as e:
+        print(f"Error generating suggestions: {e}")
+        # Build strict JSON fallback if model fails
+        return jsonify({"questions": []})
 
 # --- Heartbeat / Auto Shutdown ---
 LAST_HEARTBEAT = time.time() + 10  # Initial grace period (10s)
